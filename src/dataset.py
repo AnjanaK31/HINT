@@ -17,7 +17,7 @@ import cv2
 from skimage.feature import canny
 
 class Dataset(torch.utils.data.Dataset):
-    def __init__(self, config, flist, mask_flist, augment=True, training=True):
+    def __init__(self, config, flist, mask_flist, landmark_flist, augment=True, training=True):
         super(Dataset, self).__init__()
         self.config = config
         self.augment = augment
@@ -25,6 +25,7 @@ class Dataset(torch.utils.data.Dataset):
 
         self.data = self.load_flist(flist)
         self.mask_data = self.load_flist(mask_flist)
+        self.landmark_data = self.load_flist(landmark_flist)
 
         self.input_size = config.INPUT_SIZE
         self.mask = config.MASK
@@ -50,14 +51,23 @@ class Dataset(torch.utils.data.Dataset):
         # load image
         img = imread(self.data[index])
 
+        landmark = None
+        if len(self.landmark_data) > 0:
+            # We attempt to safely load landmarks if the flist provides them
+            try:
+                landmark = self.load_lmk([size, size] if size != 0 else img.shape, index, img.shape)
+            except:
+                landmark = np.zeros((self.config.LANDMARK_POINTS, 2))
+
         if size != 0:
             img = self.resize(img, size, size, centerCrop=True)
-
 
 
         # load mask
         mask = self.load_mask(img, index)
 
+        if landmark is not None:
+            return self.to_tensor(img), torch.from_numpy(landmark).long(), self.to_tensor(mask)
 
         return self.to_tensor(img), self.to_tensor(mask)
 
@@ -161,7 +171,7 @@ class Dataset(torch.utils.data.Dataset):
 
             if os.path.isfile(flist):
                 try:
-                    return np.genfromtxt(flist, dtype=np.str, encoding='utf-8')
+                    return np.genfromtxt(flist, dtype=str, encoding='utf-8')
                 except Exception as e:
                     print(e)
                     return [flist]

@@ -5,11 +5,16 @@ SEED: 10            # random seed
 GPU: [0]            # list of gpu ids
 AUGMENTATION_TRAIN: 0 # 1: use augmentation to train landmark predictor  0:not use
 
-TRAIN_INPAINT_IMAGE_FLIST: 
-TEST_INPAINT_IMAGE_FLIST: 
+TRAIN_INPAINT_IMAGE_FLIST: /home/snuc/Desktop/HINTwithSymmetry/HINT/flists/celeba_train.flist
+VAL_INPAINT_IMAGE_FLIST: /home/snuc/Desktop/HINTwithSymmetry/HINT/flists/celeba_val.flist
+TEST_INPAINT_IMAGE_FLIST: /home/snuc/Desktop/HINTwithSymmetry/HINT/flists/celeba_test.flist
 
-TRAIN_MASK_FLIST: 
-TEST_MASK_FLIST: 
+TRAIN_MASK_FLIST: /home/snuc/Desktop/HINTwithSymmetry/HINT/flists/masks_train.flist
+TEST_MASK_FLIST: /home/snuc/Desktop/HINTwithSymmetry/HINT/flists/masks_test.flist
+
+TRAIN_LANDMARK_FLIST: /home/snuc/Desktop/HINTwithSymmetry/HINT/flists/landmarks_train.flist
+VAL_LANDMARK_FLIST: /home/snuc/Desktop/HINTwithSymmetry/HINT/flists/landmarks_val.flist
+TEST_LANDMARK_FLIST: /home/snuc/Desktop/HINTwithSymmetry/HINT/flists/landmarks_test.flist
 
 LR: 0.0001                    # learning rate
 D2G_LR: 0.1                   # discriminator/generator learning rate ratio
@@ -19,7 +24,7 @@ WD: 0
 LR_Decay: 1
 
 
-BATCH_SIZE: 4               # input batch size for training
+BATCH_SIZE: 1               # input batch size for training
 INPUT_SIZE: 256               # input image size for training 0 for original size
 MAX_ITERS: 300001                 # maximum number of iterations to train the model
 
@@ -34,6 +39,12 @@ INPAINT_ADV_LOSS_WEIGHT: 0.01 # adversarial loss weight
 GAN_LOSS: lsgan               # nsgan | lsgan | hinge
 GAN_POOL_SIZE: 0              # fake images pool size
 
-SAVE_INTERVAL: 1000           # how many iterations to wait before saving model (0: never)
+SAVE_INTERVAL: 100            # how many iterations to wait before saving model (0: never)
 EVAL_INTERVAL: 0              # how many iterations to wait before model evaluation (0: never)
 LOG_INTERVAL: 100              # how many iterations to wait before logging training status (0: never)
+SAMPLE_INTERVAL: 100           # how many iterations to wait before sampling (0: never)
+SAMPLE_SIZE: 4                # number of samples to generate during sampling
+
+LANDMARK_POINTS: 68           # number of facial landmarks
+VERBOSE: 1                    # 1: print loss every iteration
+DEVICE: cuda                  # device to use: cuda | cpu
