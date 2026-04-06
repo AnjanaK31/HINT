@@ -1,0 +1,4 @@
+# Data Paths
+TRAIN_INPAINT_IMAGE_FLIST: ./datasets/celeba/celeba_train.flist
+VAL_INPAINT_IMAGE_FLIST: ./datasets/celeba/celeba_val.flist
+TEST_INPAINT_IMAGE_FLIST: ./datasets/celeba/celeba_test.flist

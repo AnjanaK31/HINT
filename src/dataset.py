@@ -69,6 +69,9 @@ class Dataset(torch.utils.data.Dataset):
         if landmark is not None:
             return self.to_tensor(img), torch.from_numpy(landmark).long(), self.to_tensor(mask)
 
+        if landmark is not None:
+            return self.to_tensor(img), torch.from_numpy(landmark).long(), self.to_tensor(mask)
+        
         return self.to_tensor(img), self.to_tensor(mask)
 
 
@@ -158,17 +161,38 @@ class Dataset(torch.utils.data.Dataset):
         img = np.array(Image.fromarray(img).resize((height, width)))
         return img
 
-    def load_flist(self, flist):
+    def load_flist(self,flist):
         if isinstance(flist, list):
             return flist
-
-        # flist: image file path, image directory path, text file flist path
+            
+        # If it's a string, check if it's a text file
         if isinstance(flist, str):
             if os.path.isdir(flist):
                 flist = list(glob.glob(flist + '/*.jpg')) + list(glob.glob(flist + '/*.png'))
                 flist.sort()
                 return flist
+snuc@snuc-HP-Z4-G5-Workstation-Desktop-PC:~/Desktop/HINTwithSymmetry/HINT$ git status
+On branch main
+Your branch and 'origin/main' have diverged,
+and have 1 and 12 different commits each, respectively.
+  (use "git pull" if you want to integrate the remote branch with yours)
 
+nothing to commit, working tree clean
+snuc@snuc-HP-Z4-G5-Workstation-Desktop-PC:~/Desktop/HINTwithSymmetry/HINT$ git pull
+hint: You have divergent branches and need to specify how to reconcile them.
+hint: You can do so by running one of the following commands sometime before
+hint: your next pull:
+hint: 
+hint:   git config pull.rebase false  # merge
+hint:   git config pull.rebase true   # rebase
+hint:   git config pull.ff only       # fast-forward only
+hint: 
+hint: You can replace "git config" with "git config --global" to set a default
+hint: preference for all repositories. You can also pass --rebase, --no-rebase,
+hint: or --ff-only on the command line to override the configured default per
+hint: invocation.
+fatal: Need to specify how to reconcile divergent branches.
+snuc@snuc-HP-Z4-G5-Workstation-Desktop-PC:~/Desktop/HINTwithSymmetry/HINT$ 
             if os.path.isfile(flist):
                 try:
                     return np.genfromtxt(flist, dtype=str, encoding='utf-8')
@@ -189,7 +213,26 @@ class Dataset(torch.utils.data.Dataset):
             for item in sample_loader:
                 yield item
 
+    def shuffle_lr(self, parts, pairs=None):
+        if pairs is None:
+            if self.config.LANDMARK_POINTS == 68:
+                pairs = [16, 15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1, 0,
+                     26, 25, 24, 23, 22, 21, 20, 19, 18, 17, 27, 28, 29, 30, 35,
+                     34, 33, 32, 31, 45, 44, 43, 42, 47, 46, 39, 38, 37, 36, 41,
+                     40, 54, 53, 52, 51, 50, 49, 48, 59, 58, 57, 56, 55, 64, 63,
+                     62, 61, 60, 67, 66, 65]
+            elif self.config.LANDMARK_POINTS == 98:
+                pairs = [32, 31, 30, 29, 28, 27, 26, 25, 24, 23, 22, 21, 20, 19, 18, 17, 16, 15, 14, 13, 12, 11, 10, 9,
+                         8, 7, 6, 5, 4, 3, 2, 1, 0, 46, 45, 44, 43, 42, 50, 49, 48, 47, 37, 36, 35, 34, 33, 41, 40, 39,
+                         38, 51, 52, 53, 54, 59, 58, 57, 56, 55, 72, 71, 70, 69, 68, 75, 74, 73, 64, 63, 62, 61, 60, 67,
+                         66, 65, 82, 81, 80, 79, 78, 77, 76, 87, 86, 85, 84, 83, 92, 91, 90, 89, 88, 95, 94, 93, 97, 96]
 
+        if len(parts.shape) == 3:
+            parts = parts[:,pairs,...]
+        else:
+            parts = parts[pairs,...]
+
+        return parts
 
 
 def image_transforms(load_size):
@@ -199,3 +242,25 @@ def image_transforms(load_size):
         transforms.Resize(size=load_size, interpolation=Image.BILINEAR),
         transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))
     ])
+snuc@snuc-HP-Z4-G5-Workstation-Desktop-PC:~/Desktop/HINTwithSymmetry/HINT$ git status
+On branch main
+Your branch and 'origin/main' have diverged,
+and have 1 and 12 different commits each, respectively.
+  (use "git pull" if you want to integrate the remote branch with yours)
+
+nothing to commit, working tree clean
+snuc@snuc-HP-Z4-G5-Workstation-Desktop-PC:~/Desktop/HINTwithSymmetry/HINT$ git pull
+hint: You have divergent branches and need to specify how to reconcile them.
+hint: You can do so by running one of the following commands sometime before
+hint: your next pull:
+hint: 
+hint:   git config pull.rebase false  # merge
+hint:   git config pull.rebase true   # rebase
+hint:   git config pull.ff only       # fast-forward only
+hint: 
+hint: You can replace "git config" with "git config --global" to set a default
+hint: preference for all repositories. You can also pass --rebase, --no-rebase,
+hint: or --ff-only on the command line to override the configured default per
+hint: invocation.
+fatal: Need to specify how to reconcile divergent branches.
+snuc@snuc-HP-Z4-G5-Workstation-Desktop-PC:~/Desktop/HINTwithSymmetry/HINT$ 

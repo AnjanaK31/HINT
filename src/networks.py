@@ -1,4 +1,4 @@
-
+import math
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -294,7 +294,7 @@ class Downsample(nn.Module):
         out = self.body(x)
         out_mask = self.body2(mask)
         b,n,h,w = out.shape
-        t = torch.zeros((b,2*n,h,w)).cuda()
+        t = torch.zeros((b,2*n,h,w)).to(out.device)
         for i in range(n):
             t[:,2*i,:,:] = out[:,i,:,:]
         for i in range(n):
@@ -322,6 +322,7 @@ class Upsample(nn.Module):
 ##---------- HINT -----------------------
 class HINT(nn.Module):
     def __init__(self,
+                 inp_channels=5,
                  inp_channels=5,
                  out_channels=3,
                  dim=48,

@@ -1,0 +1,45 @@
+# Basic Settings
+MODE: 1                      # 1: train, 2: test, 3: eval
+MODEL: 2                     # 2: inpaint model
+MASK: 3                      # 1: random block, 2: half, 3: external, 4: (external, random block), 5: (external, random block, half)
+SEED: 10                     # random seed
+GPU: [0]                     # list of gpu ids
+
+# Landmark Settings
+USE_LANDMARKS: 1             # 0: false, 1: true
+LANDMARK_POINTS: 68          # 68 for CelebA
+
+# Data Paths
+TRAIN_INPAINT_IMAGE_FLIST: ./datasets/celeba_train_images.flist
+TRAIN_LANDMARK_LANDMARK_FLIST: ./datasets/celeba_train_landmarks.flist
+TRAIN_MASK_FLIST: ./datasets/masks_train.flist
+
+VAL_INPAINT_IMAGE_FLIST: ./datasets/celeba_val_images.flist
+VAL_LANDMARK_LANDMARK_FLIST: ./datasets/celeba_val_landmarks.flist
+
+TEST_INPAINT_IMAGE_FLIST: ./datasets/celeba_test_images.flist
+TEST_LANDMARK_LANDMARK_FLIST: ./datasets/celeba_test_landmarks.flist
+TEST_MASK_FLIST: ./datasets/masks_test.flist
+
+# Hyperparameters
+LR: 0.0001                   # learning rate
+D2G_LR: 0.1                  # discriminator/generator learning rate ratio
+BETA1: 0.0                   # adam optimizer beta1
+BETA2: 0.9                   # adam optimizer beta2
+BATCH_SIZE: 4                # batch size
+INPUT_SIZE: 256              # image size
+MAX_ITERS: 2000000           # max iterations
+
+# Loss Weights
+L1_LOSS_WEIGHT: 1
+STYLE_LOSS_WEIGHT: 250
+CONTENT_LOSS_WEIGHT: 0.1
+INPAINT_ADV_LOSS_WEIGHT: 0.01
+TV_LOSS_WEIGHT: 0.1
+
+# training
+SAVE_INTERVAL: 1000
+SAMPLE_INTERVAL: 1000
+SAMPLE_SIZE: 12
+LOG_INTERVAL: 10
+GAN_LOSS: nsgan             # nsgan | lsgan | hinge

@@ -9,12 +9,23 @@ class Config(dict):
             self._dict['PATH'] = os.path.dirname(config_path)
  
     def __getattr__(self, name):
-        if self._dict.get(name) is not None:
-            return self._dict[name]
+        # 1. If it's a "magic" method (starts with __), raise AttributeError immediately.
+        # This fixes the 'NoneType' is not callable error during pickling.
+        if name.startswith('__'):
+            raise AttributeError(name)
 
-        if DEFAULT_CONFIG.get(name) is not None:
+        # 2. Access internal storage safely
+        _inner_dict = self.__dict__.get('_dict')
+        
+        if _inner_dict is not None and name in _inner_dict:
+            return _inner_dict[name]
+
+        # 3. Check the default config
+        if name in DEFAULT_CONFIG:
             return DEFAULT_CONFIG[name]
 
+        # 4. For everything else, return None. 
+        # This fixes the 'RESULTS' error in HINT.py.
         return None
 
     def print(self):
@@ -57,4 +68,13 @@ DEFAULT_CONFIG = {
     'SAMPLE_SIZE': 12,              # number of images to sample
     'EVAL_INTERVAL': 0,             # how many iterations to wait before model evaluation (0: never)
     'LOG_INTERVAL': 10,             # how many iterations to wait before logging training status (0: never)
+
+    'USE_LANDMARKS': 1,             # 0: false, 1: true
+    'LANDMARK_POINTS': 68,          # 68: celebA, 98: wflw
+    'TRAIN_LANDMARK_IMAGE_FLIST': None,
+    'TRAIN_LANDMARK_LANDMARK_FLIST': None,
+    'VAL_LANDMARK_IMAGE_FLIST': None,
+    'VAL_LANDMARK_LANDMARK_FLIST': None,
+    'TEST_LANDMARK_IMAGE_FLIST': None,
+    'TEST_LANDMARK_LANDMARK_FLIST': None,
 }

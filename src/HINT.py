@@ -6,6 +6,7 @@ import torch.nn.functional as F
 from torch.utils.data import DataLoader
 from .dataset import Dataset
 from .models import InpaintingModel, LandmarkDetectorModel
+from .models import InpaintingModel, LandmarkDetectorModel
 from .utils import Progbar, create_dir, stitch_images, imsave
 from .metrics import PSNR
 from cv2 import circle
@@ -16,6 +17,9 @@ import wandb
 import lpips
 import torchvision
 import time
+from torch.cuda.amp import autocast, GradScaler
+import torch.backends.cudnn as cudnn
+cudnn.benchmark = True
 
 '''
 This repo is modified basing on Edge-Connect
@@ -42,6 +46,7 @@ class HINT():
 
         self.psnr = PSNR(255.0).to(config.DEVICE)
         self.cal_mae = nn.L1Loss(reduction='sum')
+        self.scaler = GradScaler(enabled=getattr(config, 'USE_AMP', False))
 
         #train mode
         if self.config.MODE == 1:
@@ -82,16 +87,21 @@ class HINT():
 
 
     def train(self):
-        wandb.watch(self.inpaint_model, self.psnr, log='all', log_freq=10)
         
+        wandb.watch(self.inpaint_model, self.psnr, log='all', log_freq=10)
         train_loader = DataLoader(
             dataset=self.train_dataset,
             batch_size=self.config.BATCH_SIZE,
-            num_workers=4,
+            num_workers=20, # Optimized for 24-core CPU
+            pin_memory=True, # GPU optimization
             drop_last=True,
             shuffle=True
         )
-
+        print(f"DEBUG: I found {len(train_loader.dataset)} valid image-mask pairs to train!")
+        print("\n" + "="*40)
+        print("ULITMATE DEBUG MODE")
+        print(f"Total images in dataset: {len(train_loader.dataset)}")
+        print(f"Total batches in loader: {len(train_loader)}")
         epoch = 0
         keep_training = True
         model = self.config.MODEL
@@ -140,7 +150,8 @@ class HINT():
                     logs.append(('mae', mae.item()))
                     logs.append(('l_loss', landmark_loss.item()))
 
-                    self.inpaint_model.backward(gen_loss, dis_loss)
+                    # Using scaler for backward pass
+                    self.inpaint_model.backward(gen_loss, dis_loss, scaler=self.scaler if getattr(self.config, 'USE_AMP', False) else None)
                     iteration = self.inpaint_model.iteration
 
                 if iteration >= max_iteration:
@@ -239,13 +250,18 @@ class HINT():
 
         test_loader = DataLoader(
             dataset=self.test_dataset,
-            batch_size=1,
+            batch_size=self.config.BATCH_SIZE,
+            num_workers=4,
+            shuffle=False
         )
         
         psnr_list = []
         ssim_list = []
         l1_list = []
         lpips_list = []
+        nme_list = []
+
+        cal_mean_nme = self.cal_mean_nme_tracker()
         
         print('here')
         index = 0
@@ -259,7 +275,16 @@ class HINT():
 
             # inpaint model
             if model == 2:
-
+                if self.config.USE_LANDMARKS:
+                    # Predict landmarks if in joint mode (Stage 3 logic basically)
+                    if self.landmark_model is not None:
+                        landmark_pred = self.landmark_model(images, masks)
+                        landmark_pred = landmark_pred.reshape(-1, self.config.LANDMARK_POINTS, 2).long()
+                        landmark_map = self.generate_landmark_map(landmark_pred)
+                    else:
+                        landmark_map = self.generate_landmark_map(landmarks_gt)
+                else:
+                    landmark_map = None
 
                 inputs = (images * (1 - masks))
                 with torch.no_grad():
@@ -272,22 +297,27 @@ class HINT():
                     
                     outputs_img = self.inpaint_model(images, masks, landmark_map)
                     ttime_elapsed = int(round(time.time()*1000))-tsince
-                    print('test time elaspsed {}ms'.format(ttime_elapsed))
+                    print('test batch time elapsed {}ms'.format(ttime_elapsed))
+                
                 outputs_merged = (outputs_img * masks) + (images * (1 - masks))
                 
-                psnr, ssim = self.metric(images, outputs_merged)
-                psnr_list.append(psnr)
-                ssim_list.append(ssim)
-                
-                if torch.cuda.is_available():
-                    pl = self.loss_fn_vgg(self.transf(outputs_merged[0].cpu()).cuda(), self.transf(images[0].cpu()).cuda()).item()
-                    lpips_list.append(pl)
-                else:
-                    pl = self.loss_fn_vgg(self.transf(outputs_merged[0].cpu()), self.transf(images[0].cpu())).item()
+                # Loop through each sample in the batch
+                batch_size = images.shape[0]
+                for i in range(batch_size):
+                    sample_psnr, sample_ssim = self.metric(images[i], outputs_merged[i])
+                    psnr_list.append(sample_psnr)
+                    ssim_list.append(sample_ssim)
+                    
+                    if torch.cuda.is_available():
+                        pl = self.loss_fn_vgg(self.transf(outputs_merged[i].cpu().unsqueeze(0)).cuda(), 
+                                             self.transf(images[i].cpu().unsqueeze(0)).cuda()).item()
+                    else:
+                        pl = self.loss_fn_vgg(self.transf(outputs_merged[i].cpu().unsqueeze(0)), 
+                                             self.transf(images[i].cpu().unsqueeze(0))).item()
                     lpips_list.append(pl)                
-                
-                l1_loss = torch.nn.functional.l1_loss(outputs_merged, images, reduction='mean').item()
-                l1_list.append(l1_loss)
+                    
+                    l1_loss = torch.nn.functional.l1_loss(outputs_merged[i], images[i], reduction='mean').item()
+                    l1_list.append(l1_loss)
 
                 print("psnr:{}/{}  ssim:{}/{} l1:{}/{}  lpips:{}/{}  {}".format(psnr, np.average(psnr_list),
                                                                                 ssim, np.average(ssim_list),
@@ -359,11 +389,12 @@ class HINT():
         torch.onnx.export(model, images_joint, 'model.onnx')
         wandb.save('model.onnx')
         print('\nEnd Testing')
-        
-        print('edge_psnr_ave:{} edge_ssim_ave:{} l1_ave:{} lpips:{}'.format(np.average(psnr_list),
-                                                                                 np.average(ssim_list),
-                                                                                 np.average(l1_list),
-                                                                                 np.average(lpips_list)))
+        final_str = 'Average PSNR: {:.4f}, SSIM: {:.4f}, L1: {:.4f}, LPIPS: {:.4f}'.format(
+            np.average(psnr_list), np.average(ssim_list), np.average(l1_list), np.average(lpips_list))
+        if nme_list:
+            final_str += ', Average NME: {:.4f}'.format(np.average(nme_list))
+        print(final_str)
+
 
 
 
@@ -383,18 +414,31 @@ class HINT():
         img = img.permute(0, 2, 3, 1)
         return img.int()
 
+    def generate_landmark_map(self, landmark_cord):
+        img_size = self.config.INPUT_SIZE
+        if torch.is_tensor(landmark_cord):
+            if landmark_cord.ndimension() == 3:
+                landmark_img = torch.zeros(landmark_cord.shape[0], 1, img_size, img_size).to(landmark_cord.device)
+                for i in range(landmark_cord.shape[0]):
+                    # clamp coordinates to be within grid
+                    l_y = landmark_cord[i, :, 1].clamp(0, img_size - 1)
+                    l_x = landmark_cord[i, :, 0].clamp(0, img_size - 1)
+                    landmark_img[i, 0, l_y, l_x] = 1
+            elif landmark_cord.ndimension() == 2:
+                landmark_img = torch.zeros(1, img_size, img_size).to(landmark_cord.device)
+                l_y = landmark_cord[:, 1].clamp(0, img_size - 1)
+                l_x = landmark_cord[:, 0].clamp(0, img_size - 1)
+                landmark_img[0, l_y, l_x] = 1
+        return landmark_img
+
 
     def metric(self, gt, pre):
-        pre = pre.clamp_(0, 1) * 255.0
-        pre = pre.permute(0, 2, 3, 1)
-        pre = pre.detach().cpu().numpy().astype(np.uint8)[0]
-
-        gt = gt.clamp_(0, 1) * 255.0
-        gt = gt.permute(0, 2, 3, 1)
-        gt = gt.cpu().detach().numpy().astype(np.uint8)[0]
+        # gt and pre are [C, H, W] tensors
+        pre = (pre.clamp(0, 1) * 255.0).permute(1, 2, 0).detach().cpu().numpy().astype(np.uint8)
+        gt = (gt.clamp(0, 1) * 255.0).permute(1, 2, 0).cpu().detach().numpy().astype(np.uint8)
 
         psnr = min(100, compare_psnr(gt, pre))
-        ssim = compare_ssim(gt, pre, multichannel=True, data_range=255)
+        ssim = compare_ssim(gt, pre, channel_axis=-1, data_range=255)
 
         return psnr, ssim
     

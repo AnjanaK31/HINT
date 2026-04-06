@@ -4,6 +4,7 @@ import torch.nn as nn
 import torch.optim as optim
 import torch.nn.functional as F
 from .networks import HINT, Discriminator, MobileNetV2
+from .networks import HINT, Discriminator, MobileNetV2
 from .loss import AdversarialLoss, PerceptualLoss, StyleLoss
 
 
@@ -121,45 +122,56 @@ class InpaintingModel(BaseModel):
         dis_fake_loss = self.adversarial_loss(dis_fake, False, True)
         dis_loss += (dis_real_loss + dis_fake_loss) / 2
 
-
         # generator adversarial loss
         gen_input_fake = outputs_img
         gen_fake, _ = self.discriminator(torch.cat((gen_input_fake, masks, landmark_map), dim=1))
         gen_gan_loss = self.adversarial_loss(gen_fake, True, False) * self.config.INPAINT_ADV_LOSS_WEIGHT
         gen_loss += gen_gan_loss
 
-
-        
         gen_l1_loss = self.l1_loss(outputs_img, images) * self.config.L1_LOSS_WEIGHT / torch.mean(masks)
         gen_loss += gen_l1_loss
 
-
         # generator perceptual loss
-        gen_content_loss = self.perceptual_loss(outputs_img, images)
-        gen_content_loss = gen_content_loss * self.config.CONTENT_LOSS_WEIGHT
+        gen_content_loss = self.perceptual_loss(outputs_img, images) * self.config.CONTENT_LOSS_WEIGHT
         gen_loss += gen_content_loss
 
-
         # generator style loss
-        gen_style_loss = self.style_loss(outputs_img * masks, images * masks)
-        gen_style_loss = gen_style_loss * self.config.STYLE_LOSS_WEIGHT
+        gen_style_loss = self.style_loss(outputs_img * masks, images * masks) * self.config.STYLE_LOSS_WEIGHT
         gen_loss += gen_style_loss
 
-        #############################
+        # ---> THE SYMMETRY LOSS (LAFIN Inspired) <---
+        gen_sym_loss = 0
+        if self.config.USE_LANDMARKS and landmarks is not None:
+            # Simple global flip as baseline
+            flipped_outputs = torch.flip(outputs_img, dims=[3])
+            sym_weight = getattr(self.config, 'SYMMETRY_LOSS_WEIGHT', 10.0)
+            
+            # The core idea: Local regions near symmetric landmarks should be similar
+            # In LAFIN, this is often done by aligning or weighting the loss
+            # Here we implement it as a combination of global flip and potential specific checks
+            gen_sym_loss = self.l1_loss(outputs_img, flipped_outputs) * sym_weight
+        else:
+            # Fallback for no landmarks
+            flipped_outputs = torch.flip(outputs_img, dims=[3])
+            sym_weight = getattr(self.config, 'SYMMETRY_LOSS_WEIGHT', 5.0)
+            gen_sym_loss = self.l1_loss(outputs_img, flipped_outputs) * sym_weight
+
+        gen_loss += gen_sym_loss
+        # ---------------------------
 
         # create logs
         logs = [
-            ("gLoss",gen_loss.item()),
-            ("dLoss",dis_loss.item())
+            ("gLoss", gen_loss.item()),
+            ("dLoss", dis_loss.item()),
+            ("symLoss", gen_sym_loss.item())
         ]
 
-        return outputs_img, gen_loss, dis_loss, logs, gen_gan_loss, gen_l1_loss, gen_content_loss, gen_style_loss
+        return outputs_img, gen_loss, dis_loss, logs, gen_gan_loss, gen_l1_loss, gen_content_loss, gen_style_loss, gen_sym_loss
 
 
     def forward(self, images, masks, landmark_map=None):
         images_masked = (images * (1 - masks).float()) + masks
 
-        inputs = images_masked
         scaled_masks_tiny = F.interpolate(masks, size=[int(masks.shape[2] / 8), int(masks.shape[3] / 8)],
                                      mode='nearest')        
         
@@ -171,13 +183,28 @@ class InpaintingModel(BaseModel):
         outputs_img = self.generator(inputs,masks,scaled_masks_half,scaled_masks_quarter,scaled_masks_tiny, landmark_map)            
         return outputs_img
 
-    def backward(self, gen_loss = None, dis_loss = None):
+    def backward(self, gen_loss = None, dis_loss = None, scaler = None):
+        optimizer_dis = self.dis_optimizer
+        optimizer_gen = self.gen_optimizer
 
-        dis_loss.backward(retain_graph= True)
-        gen_loss.backward()
-        self.dis_optimizer.step()
+        if scaler:
+            # Scaled Discriminator backward
+            optimizer_dis.zero_grad()
+            scaler.scale(dis_loss).backward(retain_graph=True)
+            scaler.step(optimizer_dis)
 
-        self.gen_optimizer.step()
+            # Scaled Generator backward
+            optimizer_gen.zero_grad()
+            scaler.scale(gen_loss).backward()
+            scaler.step(optimizer_gen)
+
+            scaler.update()
+        else:
+            dis_loss.backward(retain_graph= True)
+            self.dis_optimizer.step()
+
+            gen_loss.backward()
+            self.gen_optimizer.step()
 
     def backward_joint(self, gen_loss = None, dis_loss = None):
         dis_loss.backward()
