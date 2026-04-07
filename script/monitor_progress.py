@@ -4,7 +4,7 @@ import shutil
 
 # Configuration
 WATCH_FILE = 'checkpoints/results/inpaint/joint/000001.png'
-HISTORY_DIR = 'checkpoints/results/history_3XSymmetry'
+HISTORY_DIR = 'checkpoints/results/history_FULLDATASET'
 CHANGE_THRESHOLD = 1  # Copy every 10 changes
 
 def monitor():

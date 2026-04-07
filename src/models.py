@@ -4,9 +4,7 @@ import torch.nn as nn
 import torch.optim as optim
 import torch.nn.functional as F
 from .networks import HINT, Discriminator, MobileNetV2
-from .networks import HINT, Discriminator, MobileNetV2
 from .loss import AdversarialLoss, PerceptualLoss, StyleLoss
-
 
 
 class BaseModel(nn.Module):
@@ -23,10 +21,10 @@ class BaseModel(nn.Module):
     def load(self):
         if os.path.exists(self.gen_weights_path):
             print('Loading %s generator...' % self.name)
-            
+
             if torch.cuda.is_available():
                 data = torch.load(self.gen_weights_path)
-            else: 
+            else:
                 data = torch.load(self.gen_weights_path, map_location=lambda storage, loc: storage)
 
             self.generator.load_state_dict(data['generator'], strict=False)
@@ -44,7 +42,8 @@ class BaseModel(nn.Module):
             try:
                 self.discriminator.load_state_dict(data['discriminator'])
             except RuntimeError as e:
-                print(f"WARNING: Could not load discriminator due to size mismatch (likely 4-channel to 5-channel transition). Training discriminator from scratch. Error: {e}")
+                print(f"WARNING: Could not load discriminator due to size mismatch "
+                      f"(likely 4-channel to 5-channel transition). Training discriminator from scratch. Error: {e}")
 
     def save(self):
         print('\nsaving %s...\n' % self.name)
@@ -58,7 +57,6 @@ class BaseModel(nn.Module):
         }, self.dis_weights_path)
 
 
-
 class InpaintingModel(BaseModel):
     def __init__(self, config):
         super(InpaintingModel, self).__init__('InpaintingModel', config)
@@ -67,7 +65,7 @@ class InpaintingModel(BaseModel):
         discriminator = Discriminator(in_channels=5, use_sigmoid=config.GAN_LOSS != 'hinge')
         if len(config.GPU) > 1:
             generator = nn.DataParallel(generator, config.GPU)
-            discriminator = nn.DataParallel(discriminator , config.GPU)
+            discriminator = nn.DataParallel(discriminator, config.GPU)
 
         l1_loss = nn.L1Loss()
         perceptual_loss = PerceptualLoss()
@@ -94,7 +92,6 @@ class InpaintingModel(BaseModel):
             betas=(config.BETA1, config.BETA2)
         )
 
-
     def process(self, images, masks, landmark_map=None):
         self.iteration += 1
 
@@ -115,8 +112,8 @@ class InpaintingModel(BaseModel):
         dis_input_real = images
         dis_input_fake = outputs_img.detach()
 
-        dis_real, _ = self.discriminator(torch.cat((dis_input_real, masks, landmark_map), dim=1))                  
-        dis_fake, _ = self.discriminator(torch.cat((dis_input_fake, masks, landmark_map), dim=1))                  
+        dis_real, _ = self.discriminator(torch.cat((dis_input_real, masks, landmark_map), dim=1))
+        dis_fake, _ = self.discriminator(torch.cat((dis_input_fake, masks, landmark_map), dim=1))
 
         dis_real_loss = self.adversarial_loss(dis_real, True, True)
         dis_fake_loss = self.adversarial_loss(dis_fake, False, True)
@@ -128,34 +125,31 @@ class InpaintingModel(BaseModel):
         gen_gan_loss = self.adversarial_loss(gen_fake, True, False) * self.config.INPAINT_ADV_LOSS_WEIGHT
         gen_loss += gen_gan_loss
 
-        gen_l1_loss = self.l1_loss(outputs_img, images) * self.config.L1_LOSS_WEIGHT / torch.mean(masks)
+        # Weighted L1 loss: background sharpness (1x) + hole focus (6x)
+        l1_valid = self.l1_loss(outputs_img * (1 - masks), images * (1 - masks))
+        l1_hole = self.l1_loss(outputs_img * masks, images * masks)
+        gen_l1_loss = (l1_valid * 1.0 + l1_hole * 6.0) * self.config.L1_LOSS_WEIGHT
         gen_loss += gen_l1_loss
 
+        # Merge inpainted region into original for seam-free perceptual/style guidance
+        outputs_merged = (outputs_img * masks) + (images * (1 - masks))
+
         # generator perceptual loss
-        gen_content_loss = self.perceptual_loss(outputs_img, images) * self.config.CONTENT_LOSS_WEIGHT
+        gen_content_loss = self.perceptual_loss(outputs_merged, images) * self.config.CONTENT_LOSS_WEIGHT
         gen_loss += gen_content_loss
 
         # generator style loss
-        gen_style_loss = self.style_loss(outputs_img * masks, images * masks) * self.config.STYLE_LOSS_WEIGHT
+        gen_style_loss = self.style_loss(outputs_merged, images) * self.config.STYLE_LOSS_WEIGHT
         gen_loss += gen_style_loss
 
         # ---> THE SYMMETRY LOSS (LAFIN Inspired) <---
+        # Only penalize symmetry within overlapping masked regions to avoid blurring background
         gen_sym_loss = 0
-        if self.config.USE_LANDMARKS and landmarks is not None:
-            # Simple global flip as baseline
-            flipped_outputs = torch.flip(outputs_img, dims=[3])
-            sym_weight = getattr(self.config, 'SYMMETRY_LOSS_WEIGHT', 10.0)
-            
-            # The core idea: Local regions near symmetric landmarks should be similar
-            # In LAFIN, this is often done by aligning or weighting the loss
-            # Here we implement it as a combination of global flip and potential specific checks
-            gen_sym_loss = self.l1_loss(outputs_img, flipped_outputs) * sym_weight
-        else:
-            # Fallback for no landmarks
-            flipped_outputs = torch.flip(outputs_img, dims=[3])
-            sym_weight = getattr(self.config, 'SYMMETRY_LOSS_WEIGHT', 5.0)
-            gen_sym_loss = self.l1_loss(outputs_img, flipped_outputs) * sym_weight
-
+        flipped_outputs = torch.flip(outputs_img, dims=[3])
+        flipped_masks = torch.flip(masks, dims=[3])
+        sym_mask = masks * flipped_masks
+        sym_weight = getattr(self.config, 'SYMMETRY_LOSS_WEIGHT', 3.0)
+        gen_sym_loss = self.l1_loss(outputs_img * sym_mask, flipped_outputs * sym_mask) * sym_weight
         gen_loss += gen_sym_loss
         # ---------------------------
 
@@ -168,45 +162,46 @@ class InpaintingModel(BaseModel):
 
         return outputs_img, gen_loss, dis_loss, logs, gen_gan_loss, gen_l1_loss, gen_content_loss, gen_style_loss, gen_sym_loss
 
-
     def forward(self, images, masks, landmark_map=None):
         images_masked = (images * (1 - masks).float()) + masks
 
         scaled_masks_tiny = F.interpolate(masks, size=[int(masks.shape[2] / 8), int(masks.shape[3] / 8)],
-                                     mode='nearest')        
-        
+                                          mode='nearest')
         scaled_masks_quarter = F.interpolate(masks, size=[int(masks.shape[2] / 4), int(masks.shape[3] / 4)],
-                                     mode='nearest')
+                                             mode='nearest')
         scaled_masks_half = F.interpolate(masks, size=[int(masks.shape[2] / 2), int(masks.shape[3] / 2)],
-                                     mode='nearest')
+                                          mode='nearest')
 
-        outputs_img = self.generator(inputs,masks,scaled_masks_half,scaled_masks_quarter,scaled_masks_tiny, landmark_map)            
+        outputs_img = self.generator(images_masked, masks, scaled_masks_half, scaled_masks_quarter, scaled_masks_tiny, landmark_map)
         return outputs_img
 
-    def backward(self, gen_loss = None, dis_loss = None, scaler = None):
+    def backward(self, gen_loss=None, dis_loss=None, scaler=None):
         optimizer_dis = self.dis_optimizer
         optimizer_gen = self.gen_optimizer
 
         if scaler:
-            # Scaled Discriminator backward
+            # Compute all gradients before any weight updates
             optimizer_dis.zero_grad()
             scaler.scale(dis_loss).backward(retain_graph=True)
-            scaler.step(optimizer_dis)
 
-            # Scaled Generator backward
             optimizer_gen.zero_grad()
             scaler.scale(gen_loss).backward()
-            scaler.step(optimizer_gen)
 
+            # Step both after both backward passes
+            scaler.step(optimizer_dis)
+            scaler.step(optimizer_gen)
             scaler.update()
         else:
-            dis_loss.backward(retain_graph= True)
-            self.dis_optimizer.step()
+            self.dis_optimizer.zero_grad()
+            dis_loss.backward(retain_graph=True)
 
+            self.gen_optimizer.zero_grad()
             gen_loss.backward()
+
+            self.dis_optimizer.step()
             self.gen_optimizer.step()
 
-    def backward_joint(self, gen_loss = None, dis_loss = None):
+    def backward_joint(self, gen_loss=None, dis_loss=None):
         dis_loss.backward()
         self.dis_optimizer.step()
 
@@ -214,21 +209,24 @@ class InpaintingModel(BaseModel):
         self.gen_optimizer.step()
 
 
-
 def abs_smooth(x):
     absx = torch.abs(x)
-    minx = torch.min(absx,other=torch.ones(absx.shape).cuda())
-    r = 0.5 *((absx-1)*minx + absx)
+    minx = torch.min(absx, other=torch.ones(absx.shape).cuda())
+    r = 0.5 * ((absx - 1) * minx + absx)
     return r
+
 
 def loss_landmark_abs(y_true, y_pred):
     loss = torch.mean(abs_smooth(y_pred - y_true))
     return loss
 
-def loss_landmark(landmark_true, landmark_pred, points_num=68):
-    landmark_loss = torch.norm((landmark_true-landmark_pred).reshape(-1,points_num*2),2,dim=1,keepdim=True)
 
+def loss_landmark(landmark_true, landmark_pred, points_num=68):
+    landmark_loss = torch.norm(
+        (landmark_true - landmark_pred).reshape(-1, points_num * 2), 2, dim=1, keepdim=True
+    )
     return torch.mean(landmark_loss)
+
 
 class LandmarkDetectorModel(nn.Module):
     def __init__(self, config):
@@ -248,7 +246,6 @@ class LandmarkDetectorModel(nn.Module):
             lr=self.config.LR,
             weight_decay=0.000001
         )
-
 
     def save(self):
         print('\nsaving %s...\n' % self.name)
@@ -271,37 +268,32 @@ class LandmarkDetectorModel(nn.Module):
             print('Loading landmark detector complete!')
 
     def forward(self, images, masks):
-        images_masked = images* (1 - masks).float() + masks
-
+        images_masked = images * (1 - masks).float() + masks
         landmark_gen = self.mbnet(images_masked)
         landmark_gen *= self.config.INPUT_SIZE
-
         return landmark_gen
 
     def process(self, images, masks, landmark_gt):
         self.iteration += 1
         self.optimizer.zero_grad()
 
-        images_masked = images*(1-masks)+masks
+        images_masked = images * (1 - masks) + masks
         landmark_gen = self(images_masked, masks)
         landmark_gen = landmark_gen.reshape((-1, self.config.LANDMARK_POINTS, 2))
-        loss = loss_landmark(landmark_gt.float(),landmark_gen, points_num=self.config.LANDMARK_POINTS)
+        loss = loss_landmark(landmark_gt.float(), landmark_gen, points_num=self.config.LANDMARK_POINTS)
 
         logs = [("loss", loss.item())]
         return landmark_gen, loss, logs
 
     def process_aug(self, images, masks, landmark_gt):
         self.optimizer.zero_grad()
-        images_masked = images*(1-masks)+masks
+        images_masked = images * (1 - masks) + masks
         landmark_gen = self(images_masked, masks)
-        landmark_gen = landmark_gen.reshape(-1,self.config.LANDMARK_POINTS,2)
-        loss = loss_landmark(landmark_gt.float(),landmark_gen, points_num=self.config.LANDMARK_POINTS)
+        landmark_gen = landmark_gen.reshape(-1, self.config.LANDMARK_POINTS, 2)
+        loss = loss_landmark(landmark_gt.float(), landmark_gen, points_num=self.config.LANDMARK_POINTS)
 
         logs = [("loss_aug", loss.item())]
-
         return landmark_gen, loss, logs
-
-
 
     def backward(self, loss):
         loss.backward()

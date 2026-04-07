@@ -2,7 +2,7 @@ MODE: 1             # 1: train, 2: test
 MODEL: 2            # 2: inpaint model
 USE_LANDMARKS: 1    # 1: Turn LaFIn on!
 USE_AMP: 1          # 1: Enable Automatic Mixed Precision (Optimized for RTX 5000)
-SYMMETRY_LOSS_WEIGHT: 10.0    # Symmetry architecture architecture loss weight
+SYMMETRY_LOSS_WEIGHT: 3.0    # Symmetry architecture architecture loss weight
 MASK: 3             # 0: no mask, 1: random block, 2: center mask, 3: external, 4: 50% external, 50% random block, 5: 50% no mask
 SEED: 10            # random seed
 GPU: [0]            # list of gpu ids
@@ -34,7 +34,7 @@ MAX_ITERS: 300001                 # maximum number of iterations to train the mo
 
 
 L1_LOSS_WEIGHT: 1             # l1 loss weight
-STYLE_LOSS_WEIGHT: 250        # style loss weight
+STYLE_LOSS_WEIGHT: 50        # style loss weight
 CONTENT_LOSS_WEIGHT: 0.1      # perceptual loss weight
 INPAINT_ADV_LOSS_WEIGHT: 0.01 # adversarial loss weight
 

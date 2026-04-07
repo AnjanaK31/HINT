@@ -102,7 +102,7 @@ class HINT():
         print("ULITMATE DEBUG MODE")
         print(f"Total images in dataset: {len(train_loader.dataset)}")
         print(f"Total batches in loader: {len(train_loader)}")
-        epoch = 0
+        epoch = self.inpaint_model.iteration // len(train_loader)
         keep_training = True
         model = self.config.MODEL
         max_iteration = int(float((self.config.MAX_ITERS)))
@@ -139,7 +139,7 @@ class HINT():
                     landmark_map = self.generate_landmark_map(landmark_pred_detached, self.config.INPUT_SIZE)
 
                     # 3. Inpaint model process
-                    outputs_img, gen_loss, dis_loss, logs, gen_gan_loss, gen_l1_loss, gen_content_loss, gen_style_loss = self.inpaint_model.process(images, masks, landmark_map)
+                    outputs_img, gen_loss, dis_loss, logs, gen_gan_loss, gen_l1_loss, gen_content_loss, gen_style_loss, gen_sym_loss = self.inpaint_model.process(images, masks, landmark_map)
                     
                     outputs_merged = (outputs_img * masks) + (images * (1-masks))
 

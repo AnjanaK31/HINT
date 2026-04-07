@@ -98,28 +98,7 @@ class Dataset(torch.utils.data.Dataset):
         return landmarks
 
 
-    def load_masksnuc@snuc-HP-Z4-G5-Workstation-Desktop-PC:~/Desktop/HINTwithSymmetry/HINT$ git status
-On branch main
-Your branch and 'origin/main' have diverged,
-and have 1 and 12 different commits each, respectively.
-  (use "git pull" if you want to integrate the remote branch with yours)
-
-nothing to commit, working tree clean
-snuc@snuc-HP-Z4-G5-Workstation-Desktop-PC:~/Desktop/HINTwithSymmetry/HINT$ git pull
-hint: You have divergent branches and need to specify how to reconcile them.
-hint: You can do so by running one of the following commands sometime before
-hint: your next pull:
-hint: 
-hint:   git config pull.rebase false  # merge
-hint:   git config pull.rebase true   # rebase
-hint:   git config pull.ff only       # fast-forward only
-hint: 
-hint: You can replace "git config" with "git config --global" to set a default
-hint: preference for all repositories. You can also pass --rebase, --no-rebase,
-hint: or --ff-only on the command line to override the configured default per
-hint: invocation.
-fatal: Need to specify how to reconcile divergent branches.
-snuc@snuc-HP-Z4-G5-Workstation-Desktop-PC:~/Desktop/HINTwithSymmetry/HINT$ (self, img, index):
+    def load_mask(self, img, index):
         imgh, imgw = img.shape[0:2]
         mask_type = self.mask
 
@@ -192,28 +171,6 @@ snuc@snuc-HP-Z4-G5-Workstation-Desktop-PC:~/Desktop/HINTwithSymmetry/HINT$ (self
                 flist = list(glob.glob(flist + '/*.jpg')) + list(glob.glob(flist + '/*.png'))
                 flist.sort()
                 return flist
-snuc@snuc-HP-Z4-G5-Workstation-Desktop-PC:~/Desktop/HINTwithSymmetry/HINT$ git status
-On branch main
-Your branch and 'origin/main' have diverged,
-and have 1 and 12 different commits each, respectively.
-  (use "git pull" if you want to integrate the remote branch with yours)
-
-nothing to commit, working tree clean
-snuc@snuc-HP-Z4-G5-Workstation-Desktop-PC:~/Desktop/HINTwithSymmetry/HINT$ git pull
-hint: You have divergent branches and need to specify how to reconcile them.
-hint: You can do so by running one of the following commands sometime before
-hint: your next pull:
-hint: 
-hint:   git config pull.rebase false  # merge
-hint:   git config pull.rebase true   # rebase
-hint:   git config pull.ff only       # fast-forward only
-hint: 
-hint: You can replace "git config" with "git config --global" to set a default
-hint: preference for all repositories. You can also pass --rebase, --no-rebase,
-hint: or --ff-only on the command line to override the configured default per
-hint: invocation.
-fatal: Need to specify how to reconcile divergent branches.
-snuc@snuc-HP-Z4-G5-Workstation-Desktop-PC:~/Desktop/HINTwithSymmetry/HINT$ 
             if os.path.isfile(flist):
                 try:
                     return np.genfromtxt(flist, dtype=str, encoding='utf-8')
@@ -263,25 +220,3 @@ def image_transforms(load_size):
         transforms.Resize(size=load_size, interpolation=Image.BILINEAR),
         transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))
     ])
-snuc@snuc-HP-Z4-G5-Workstation-Desktop-PC:~/Desktop/HINTwithSymmetry/HINT$ git status
-On branch main
-Your branch and 'origin/main' have diverged,
-and have 1 and 12 different commits each, respectively.
-  (use "git pull" if you want to integrate the remote branch with yours)
-
-nothing to commit, working tree clean
-snuc@snuc-HP-Z4-G5-Workstation-Desktop-PC:~/Desktop/HINTwithSymmetry/HINT$ git pull
-hint: You have divergent branches and need to specify how to reconcile them.
-hint: You can do so by running one of the following commands sometime before
-hint: your next pull:
-hint: 
-hint:   git config pull.rebase false  # merge
-hint:   git config pull.rebase true   # rebase
-hint:   git config pull.ff only       # fast-forward only
-hint: 
-hint: You can replace "git config" with "git config --global" to set a default
-hint: preference for all repositories. You can also pass --rebase, --no-rebase,
-hint: or --ff-only on the command line to override the configured default per
-hint: invocation.
-fatal: Need to specify how to reconcile divergent branches.
-snuc@snuc-HP-Z4-G5-Workstation-Desktop-PC:~/Desktop/HINTwithSymmetry/HINT$ 

@@ -45,17 +45,17 @@ class Discriminator(BaseNetwork):
 
         self.conv1 = self.features = nn.Sequential(
             spectral_norm(nn.Conv2d(in_channels=in_channels, out_channels=64, kernel_size=4, stride=2, padding=1, bias=not use_spectral_norm), use_spectral_norm),
-            nn.LeakyReLU(0.2, inplace=True),
+            nn.LeakyReLU(0.2, inplace=False),
         )
 
         self.conv2 = nn.Sequential(
             spectral_norm(nn.Conv2d(in_channels=64, out_channels=128, kernel_size=4, stride=2, padding=1, bias=not use_spectral_norm), use_spectral_norm),
-            nn.LeakyReLU(0.2, inplace=True),
+            nn.LeakyReLU(0.2, inplace=False),
         )
 
         self.conv3 = nn.Sequential(
             spectral_norm(nn.Conv2d(in_channels=128, out_channels=256, kernel_size=4, stride=2, padding=1, bias=not use_spectral_norm), use_spectral_norm),
-            nn.LeakyReLU(0.2, inplace=True),
+            nn.LeakyReLU(0.2, inplace=False),
         )
 
         self.conv4 = nn.Sequential(
@@ -322,7 +322,6 @@ class Upsample(nn.Module):
 ##---------- HINT -----------------------
 class HINT(nn.Module):
     def __init__(self,
-                 inp_channels=5,
                  inp_channels=5,
                  out_channels=3,
                  dim=48,
